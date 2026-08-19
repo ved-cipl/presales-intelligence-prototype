@@ -1,8 +1,10 @@
 import * as React from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { ArrowRight, Minus, Plus, RotateCcw } from "lucide-react";
+import ForceGraph2D, { type ForceGraphMethods, type NodeObject } from "react-force-graph-2d";
+import { ArrowRight, Minus, Plus, RotateCcw, Search, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import {
@@ -11,6 +13,7 @@ import {
   getCapabilityDetail,
   getClientDetail,
   getIndustryDetail,
+  getPersonDetail,
   getTechnologyDetail,
   PRACTICES,
   type GraphNode,
@@ -27,55 +30,56 @@ const TYPE_ORDER: GraphNodeType[] = [
   "technology",
   "caseStudy",
   "practice",
+  "person",
 ];
 
-const TYPE_META: Record<GraphNodeType, { fill: string; label: string; radius: number }> = {
-  opportunity: { fill: "var(--signal-info)", label: "Opportunity", radius: 20 },
-  client: { fill: "var(--primary)", label: "Client", radius: 22 },
-  industry: { fill: "var(--signal-unknown)", label: "Industry", radius: 16 },
-  capability: { fill: "var(--signal-positive)", label: "Capability", radius: 17 },
-  technology: { fill: "var(--signal-warning)", label: "Technology", radius: 14 },
-  caseStudy: { fill: "#8b5cf6", label: "Case Study", radius: 13 },
-  practice: { fill: "#0891b2", label: "Practice", radius: 13 },
+const TYPE_META: Record<
+  GraphNodeType,
+  { fill: string; label: string; shape: "circle" | "square" | "diamond" | "hexagon" }
+> = {
+  opportunity: { fill: "#3b82f6", label: "Opportunity", shape: "circle" },
+  client: { fill: "#193a6f", label: "Client", shape: "square" },
+  industry: { fill: "#78716c", label: "Industry", shape: "diamond" },
+  capability: { fill: "#16a34a", label: "Capability", shape: "circle" },
+  technology: { fill: "#d97706", label: "Technology", shape: "hexagon" },
+  caseStudy: { fill: "#8b5cf6", label: "Case Study", shape: "circle" },
+  practice: { fill: "#0891b2", label: "Practice", shape: "square" },
+  person: { fill: "#db2777", label: "Person", shape: "circle" },
 };
 
-function NodeShape({
-  type,
-  x,
-  y,
-  r,
-  dimmed,
-}: {
-  type: GraphNodeType;
-  x: number;
-  y: number;
-  r: number;
-  dimmed?: boolean;
-}) {
-  const fill = TYPE_META[type].fill;
-  const opacity = dimmed ? 0.35 : 1;
-  if (type === "client") {
-    return (
-      <rect x={x - r} y={y - r} width={r * 2} height={r * 2} rx={6} fill={fill} opacity={opacity} />
-    );
-  }
-  if (type === "industry") {
-    return (
-      <polygon
-        points={`${x},${y - r} ${x + r},${y} ${x},${y + r} ${x - r},${y}`}
-        fill={fill}
-        opacity={opacity}
-      />
-    );
-  }
-  if (type === "technology") {
-    const pts = Array.from({ length: 6 }, (_, i) => {
+type FGNode = NodeObject<GraphNode>;
+interface FGLink {
+  source: string | FGNode;
+  target: string | FGNode;
+  kind: "primary" | "similar";
+}
+
+function nodeIdOf(n: string | FGNode): string {
+  return typeof n === "string" ? n : ((n.id as string) ?? "");
+}
+
+function drawShape(ctx: CanvasRenderingContext2D, shape: string, x: number, y: number, r: number) {
+  ctx.beginPath();
+  if (shape === "square") {
+    ctx.rect(x - r * 0.85, y - r * 0.85, r * 1.7, r * 1.7);
+  } else if (shape === "diamond") {
+    ctx.moveTo(x, y - r);
+    ctx.lineTo(x + r, y);
+    ctx.lineTo(x, y + r);
+    ctx.lineTo(x - r, y);
+    ctx.closePath();
+  } else if (shape === "hexagon") {
+    for (let i = 0; i < 6; i++) {
       const angle = (Math.PI / 3) * i - Math.PI / 2;
-      return `${x + r * Math.cos(angle)},${y + r * Math.sin(angle)}`;
-    }).join(" ");
-    return <polygon points={pts} fill={fill} opacity={opacity} />;
+      const px = x + r * Math.cos(angle);
+      const py = y + r * Math.sin(angle);
+      if (i === 0) ctx.moveTo(px, py);
+      else ctx.lineTo(px, py);
+    }
+    ctx.closePath();
+  } else {
+    ctx.arc(x, y, r, 0, 2 * Math.PI);
   }
-  return <circle cx={x} cy={y} r={r} fill={fill} opacity={opacity} />;
 }
 
 export function GraphCanvas({
@@ -87,178 +91,301 @@ export function GraphCanvas({
 }) {
   const navigate = useNavigate();
   const { nodes, edges } = React.useMemo(() => buildGraph(), []);
-  const nodeMap = React.useMemo(() => new Map(nodes.map((n) => [n.id, n])), [nodes]);
+  const graphData = React.useMemo(
+    () => ({
+      nodes: nodes.map((n) => ({ ...n })) as FGNode[],
+      links: edges.map((e) => ({ source: e.a, target: e.b, kind: e.kind })) as FGLink[],
+    }),
+    [nodes, edges],
+  );
 
-  const [centerId, setCenterId] = React.useState(initialCenterId);
-  const [selected, setSelected] = React.useState<GraphNode | null>(null);
-  const [scale, setScale] = React.useState(1);
-  const [offset, setOffset] = React.useState({ x: 0, y: 0 });
-  const dragRef = React.useRef<{ x: number; y: number } | null>(null);
-
-  React.useEffect(() => setCenterId(initialCenterId), [initialCenterId]);
-
-  const center = nodeMap.get(centerId);
-  const neighborIds = React.useMemo(() => {
-    const ids = new Set<string>();
+  const degree = React.useMemo(() => {
+    const d = new Map<string, number>();
     for (const e of edges) {
-      if (e.a === centerId) ids.add(e.b);
-      if (e.b === centerId) ids.add(e.a);
+      d.set(e.a, (d.get(e.a) ?? 0) + 1);
+      d.set(e.b, (d.get(e.b) ?? 0) + 1);
     }
-    return Array.from(ids);
-  }, [edges, centerId]);
+    return d;
+  }, [edges]);
 
-  const neighbors = neighborIds
-    .map((id) => nodeMap.get(id))
-    .filter((n): n is GraphNode => !!n)
-    .sort((a, b) => TYPE_ORDER.indexOf(a.type) - TYPE_ORDER.indexOf(b.type));
+  const neighborMap = React.useMemo(() => {
+    const m = new Map<string, Set<string>>();
+    for (const e of edges) {
+      if (!m.has(e.a)) m.set(e.a, new Set());
+      if (!m.has(e.b)) m.set(e.b, new Set());
+      m.get(e.a)!.add(e.b);
+      m.get(e.b)!.add(e.a);
+    }
+    return m;
+  }, [edges]);
 
-  const R = Math.min(230, 140 + neighbors.length * 6);
-  const positions = new Map<string, { x: number; y: number }>();
-  neighbors.forEach((n, i) => {
-    const angle = (2 * Math.PI * i) / neighbors.length - Math.PI / 2;
-    positions.set(n.id, { x: R * Math.cos(angle), y: R * Math.sin(angle) });
-  });
+  const fgRef = React.useRef<ForceGraphMethods<GraphNode, FGLink> | undefined>(undefined);
+  const containerRef = React.useRef<HTMLDivElement>(null);
+  const [dims, setDims] = React.useState({ width: 800, height });
 
-  function handleWheel(e: React.WheelEvent) {
-    e.preventDefault();
-    setScale((s) => Math.min(2, Math.max(0.5, s - e.deltaY * 0.001)));
+  React.useEffect(() => {
+    if (!containerRef.current) return;
+    const el = containerRef.current;
+    const ro = new ResizeObserver((entries) => {
+      const box = entries[0]?.contentRect;
+      if (box) setDims({ width: box.width, height: box.height });
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  const [activeTypes, setActiveTypes] = React.useState<Set<GraphNodeType>>(() => new Set(TYPE_ORDER));
+  const [query, setQuery] = React.useState("");
+  const [selected, setSelected] = React.useState<FGNode | null>(null);
+  const [hovered, setHovered] = React.useState<FGNode | null>(null);
+  const hasCenteredRef = React.useRef<string | null>(null);
+
+  const focusNode = React.useCallback((node: FGNode | undefined, zoomLevel = 2.4) => {
+    if (!node) return;
+    setSelected(node);
+    if (typeof node.x === "number" && typeof node.y === "number" && fgRef.current) {
+      fgRef.current.centerAt(node.x, node.y, 700);
+      fgRef.current.zoom(zoomLevel, 700);
+    }
+  }, []);
+
+  const handleEngineStop = React.useCallback(() => {
+    if (hasCenteredRef.current === initialCenterId) return;
+    hasCenteredRef.current = initialCenterId;
+    const node = graphData.nodes.find((n) => n.id === initialCenterId);
+    focusNode(node);
+  }, [initialCenterId, graphData, focusNode]);
+
+  const filteredData = React.useMemo(() => {
+    const visibleIds = new Set(
+      graphData.nodes.filter((n) => activeTypes.has(n.type)).map((n) => n.id as string),
+    );
+    return {
+      nodes: graphData.nodes.filter((n) => visibleIds.has(n.id as string)),
+      links: graphData.links.filter(
+        (l) => visibleIds.has(nodeIdOf(l.source)) && visibleIds.has(nodeIdOf(l.target)),
+      ),
+    };
+  }, [graphData, activeTypes]);
+
+  const searchResults = React.useMemo(() => {
+    if (!query.trim()) return [];
+    const q = query.trim().toLowerCase();
+    return graphData.nodes.filter((n) => n.label.toLowerCase().includes(q)).slice(0, 8);
+  }, [query, graphData]);
+
+  const activeFocus = hovered ?? selected;
+  const highlightIds = activeFocus
+    ? new Set([activeFocus.id as string, ...(neighborMap.get(activeFocus.id as string) ?? [])])
+    : null;
+
+  function toggleType(t: GraphNodeType) {
+    setActiveTypes((prev) => {
+      const next = new Set(prev);
+      if (next.has(t)) next.delete(t);
+      else next.add(t);
+      return next.size ? next : prev;
+    });
   }
 
   return (
-    <div
-      className="relative overflow-hidden rounded-xl border border-border bg-card"
-      style={{ height }}
-    >
-      <svg
-        viewBox="-320 -260 640 520"
-        className="h-full w-full cursor-grab active:cursor-grabbing"
-        onWheel={handleWheel}
-        onPointerDown={(e) => {
-          dragRef.current = { x: e.clientX, y: e.clientY };
-        }}
-        onPointerMove={(e) => {
-          if (!dragRef.current) return;
-          const dx = (e.clientX - dragRef.current.x) / scale;
-          const dy = (e.clientY - dragRef.current.y) / scale;
-          setOffset((o) => ({ x: o.x + dx, y: o.y + dy }));
-          dragRef.current = { x: e.clientX, y: e.clientY };
-        }}
-        onPointerUp={() => (dragRef.current = null)}
-        onPointerLeave={() => (dragRef.current = null)}
-      >
-        <g transform={`scale(${scale}) translate(${offset.x} ${offset.y})`}>
-          {center &&
-            neighbors.map((n) => {
-              const p = positions.get(n.id)!;
-              return (
-                <line
-                  key={`edge-${n.id}`}
-                  x1={0}
-                  y1={0}
-                  x2={p.x}
-                  y2={p.y}
-                  stroke="var(--border)"
-                  strokeWidth={1.25}
-                />
-              );
-            })}
-
-          {neighbors.map((n) => {
-            const p = positions.get(n.id)!;
-            const meta = TYPE_META[n.type];
-            return (
-              <g
-                key={n.id}
-                className="cursor-pointer"
-                onClick={() => setSelected(n)}
-                onDoubleClick={() => setCenterId(n.id)}
-              >
-                <NodeShape type={n.type} x={p.x} y={p.y} r={meta.radius} />
-                <text
-                  x={p.x}
-                  y={p.y + meta.radius + 13}
-                  textAnchor="middle"
-                  fontSize={10.5}
-                  fontWeight={500}
-                  fill="var(--foreground)"
+    <div className="overflow-hidden rounded-xl border border-border bg-card">
+      <div className="flex flex-wrap items-center gap-2 border-b border-border p-3">
+        <div className="relative w-64">
+          <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Find a node…"
+            className="h-8 pl-8 text-xs"
+          />
+          {searchResults.length > 0 ? (
+            <div className="absolute left-0 top-9 z-20 max-h-56 w-full overflow-y-auto rounded-md border border-border bg-popover shadow-md">
+              {searchResults.map((n) => (
+                <button
+                  key={n.id}
+                  onClick={() => {
+                    focusNode(n);
+                    setQuery("");
+                  }}
+                  className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-xs hover:bg-accent cursor-pointer"
                 >
-                  {n.label.length > 20 ? `${n.label.slice(0, 19)}…` : n.label}
-                </text>
-              </g>
+                  <span
+                    className="h-2 w-2 shrink-0 rounded-full"
+                    style={{ backgroundColor: TYPE_META[n.type].fill }}
+                  />
+                  <span className="truncate text-foreground">{n.label}</span>
+                  <span className="ml-auto shrink-0 text-[10px] text-muted-foreground">
+                    {TYPE_META[n.type].label}
+                  </span>
+                </button>
+              ))}
+            </div>
+          ) : null}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-1.5">
+          {TYPE_ORDER.map((t) => {
+            const count = graphData.nodes.filter((n) => n.type === t).length;
+            const active = activeTypes.has(t);
+            return (
+              <button
+                key={t}
+                onClick={() => toggleType(t)}
+                className={cn(
+                  "flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors cursor-pointer",
+                  active
+                    ? "border-border bg-background text-foreground"
+                    : "border-border/60 bg-muted/40 text-muted-foreground/50",
+                )}
+              >
+                <span
+                  className="h-2 w-2 rounded-full"
+                  style={{ backgroundColor: active ? TYPE_META[t].fill : "var(--muted-foreground)" }}
+                />
+                {TYPE_META[t].label}
+                <span className="tabular-nums opacity-70">{count}</span>
+              </button>
             );
           })}
+        </div>
 
-          {center ? (
-            <g className="cursor-pointer" onClick={() => setSelected(center)}>
-              <circle
-                cx={0}
-                cy={0}
-                r={30}
-                fill="var(--sidebar)"
-                stroke={TYPE_META[center.type].fill}
-                strokeWidth={3}
-              />
-              <text
-                x={0}
-                y={-40}
-                textAnchor="middle"
-                fontSize={12}
-                fontWeight={700}
-                fill="var(--foreground)"
-              >
-                {center.label.length > 26 ? `${center.label.slice(0, 25)}…` : center.label}
-              </text>
-            </g>
-          ) : null}
-        </g>
-      </svg>
-
-      <div className="absolute right-3 top-3 flex flex-col gap-1">
-        <Button
-          size="icon"
-          variant="outline"
-          className="h-7 w-7 bg-card"
-          onClick={() => setScale((s) => Math.min(2, s + 0.15))}
-        >
-          <Plus className="h-3.5 w-3.5" />
-        </Button>
-        <Button
-          size="icon"
-          variant="outline"
-          className="h-7 w-7 bg-card"
-          onClick={() => setScale((s) => Math.max(0.5, s - 0.15))}
-        >
-          <Minus className="h-3.5 w-3.5" />
-        </Button>
-        <Button
-          size="icon"
-          variant="outline"
-          className="h-7 w-7 bg-card"
-          onClick={() => {
-            setScale(1);
-            setOffset({ x: 0, y: 0 });
-            setCenterId(initialCenterId);
-          }}
-        >
-          <RotateCcw className="h-3.5 w-3.5" />
-        </Button>
+        <span className="ml-auto text-[11px] text-muted-foreground">
+          {filteredData.nodes.length} nodes · {filteredData.links.length} connections
+        </span>
       </div>
 
-      <div className="absolute bottom-3 left-3 flex flex-wrap gap-x-3 gap-y-1 rounded-md bg-card/90 px-2.5 py-1.5 text-[10px] text-muted-foreground shadow-sm backdrop-blur">
-        {TYPE_ORDER.map((t) => (
-          <span key={t} className="flex items-center gap-1">
-            <span className="h-2 w-2 rounded-full" style={{ backgroundColor: TYPE_META[t].fill }} />
-            {TYPE_META[t].label}
-          </span>
-        ))}
+      <div ref={containerRef} className="relative" style={{ height }}>
+        <ForceGraph2D<GraphNode, FGLink>
+          ref={fgRef}
+          graphData={filteredData}
+          width={dims.width}
+          height={height}
+          backgroundColor="rgba(0,0,0,0)"
+          nodeRelSize={4}
+          nodeVal={(n) => Math.max(2.5, Math.sqrt(degree.get(n.id as string) ?? 1) * 2.2)}
+          nodeLabel={(n) => `${n.label} · ${TYPE_META[n.type].label}`}
+          nodeCanvasObject={(node, ctx, globalScale) => {
+            const r = Math.max(2.5, Math.sqrt(degree.get(node.id as string) ?? 1) * 2.2);
+            const isSelected = selected?.id === node.id;
+            const isHighlighted = !highlightIds || highlightIds.has(node.id as string);
+            const meta = TYPE_META[node.type];
+
+            ctx.globalAlpha = isHighlighted ? 1 : 0.15;
+            drawShape(ctx, meta.shape, node.x ?? 0, node.y ?? 0, r);
+            ctx.fillStyle = meta.fill;
+            ctx.fill();
+            if (isSelected) {
+              ctx.lineWidth = 2 / globalScale;
+              ctx.strokeStyle = "#111827";
+              ctx.stroke();
+            }
+
+            if (isHighlighted && (globalScale > 2.2 || isSelected || node.type === "client")) {
+              ctx.globalAlpha = isHighlighted ? 1 : 0.15;
+              ctx.font = `${isSelected ? "700" : "500"} ${11 / globalScale}px system-ui, sans-serif`;
+              ctx.textAlign = "center";
+              ctx.fillStyle = "#111827";
+              ctx.fillText(
+                node.label.length > 22 ? `${node.label.slice(0, 21)}…` : node.label,
+                node.x ?? 0,
+                (node.y ?? 0) + r + 8 / globalScale,
+              );
+            }
+            ctx.globalAlpha = 1;
+          }}
+          nodePointerAreaPaint={(node, color, ctx) => {
+            const r = Math.max(4, Math.sqrt(degree.get(node.id as string) ?? 1) * 2.2 + 2);
+            ctx.fillStyle = color;
+            drawShape(ctx, TYPE_META[node.type].shape, node.x ?? 0, node.y ?? 0, r);
+            ctx.fill();
+          }}
+          linkColor={(l) => {
+            const link = l as unknown as FGLink;
+            const isHighlighted =
+              activeFocus &&
+              (nodeIdOf(link.source) === activeFocus.id || nodeIdOf(link.target) === activeFocus.id);
+            if (isHighlighted) return "#2563eb";
+            return activeFocus ? "rgba(148,163,184,0.15)" : "rgba(148,163,184,0.45)";
+          }}
+          linkWidth={(l) => {
+            const link = l as unknown as FGLink;
+            const isHighlighted =
+              activeFocus &&
+              (nodeIdOf(link.source) === activeFocus.id || nodeIdOf(link.target) === activeFocus.id);
+            return isHighlighted ? 1.8 : 0.8;
+          }}
+          linkLineDash={(l) => ((l as unknown as FGLink).kind === "similar" ? [3, 2] : null)}
+          linkDirectionalParticles={(l) => {
+            const link = l as unknown as FGLink;
+            return selected &&
+              (nodeIdOf(link.source) === selected.id || nodeIdOf(link.target) === selected.id)
+              ? 2
+              : 0;
+          }}
+          linkDirectionalParticleWidth={2}
+          linkDirectionalParticleSpeed={0.006}
+          onNodeClick={(node) => focusNode(node)}
+          onNodeHover={(node) => setHovered(node ?? null)}
+          onBackgroundClick={() => setSelected(null)}
+          onEngineStop={handleEngineStop}
+          cooldownTicks={100}
+          d3AlphaDecay={0.02}
+          d3VelocityDecay={0.35}
+          enableNodeDrag
+        />
+
+        <div className="absolute right-3 top-3 flex flex-col gap-1">
+          <Button
+            size="icon"
+            variant="outline"
+            className="h-7 w-7 bg-card"
+            onClick={() => fgRef.current?.zoom((fgRef.current?.zoom() ?? 1) * 1.4, 300)}
+          >
+            <Plus className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            size="icon"
+            variant="outline"
+            className="h-7 w-7 bg-card"
+            onClick={() => fgRef.current?.zoom((fgRef.current?.zoom() ?? 1) / 1.4, 300)}
+          >
+            <Minus className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            size="icon"
+            variant="outline"
+            className="h-7 w-7 bg-card"
+            onClick={() => {
+              setSelected(null);
+              fgRef.current?.zoomToFit(600, 60);
+            }}
+          >
+            <RotateCcw className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+
+        {selected ? (
+          <button
+            onClick={() => setSelected(null)}
+            className="absolute bottom-3 left-3 flex items-center gap-1.5 rounded-md bg-card/95 px-2.5 py-1.5 text-[11px] font-medium text-muted-foreground shadow-sm backdrop-blur hover:text-foreground cursor-pointer"
+          >
+            <X className="h-3 w-3" />
+            Clear focus: {selected.label}
+          </button>
+        ) : (
+          <p className="absolute bottom-3 left-3 rounded-md bg-card/90 px-2.5 py-1.5 text-[10px] text-muted-foreground shadow-sm backdrop-blur">
+            Drag to pan · scroll to zoom · drag a node to reposition it
+          </p>
+        )}
       </div>
 
       <NodeDetailSheet
         node={selected}
         onOpenChange={(open) => !open && setSelected(null)}
         onFocus={(id) => {
-          setCenterId(id);
-          setSelected(null);
+          const node = graphData.nodes.find((n) => n.id === id);
+          focusNode(node);
         }}
         onOpenOpportunity={(id) => navigate({ to: "/opportunities/$id", params: { id } })}
       />
@@ -272,7 +399,7 @@ function NodeDetailSheet({
   onFocus,
   onOpenOpportunity,
 }: {
-  node: GraphNode | null;
+  node: FGNode | null;
   onOpenChange: (open: boolean) => void;
   onFocus: (id: string) => void;
   onOpenOpportunity: (id: string) => void;
@@ -291,7 +418,7 @@ function NodeDetailSheet({
             <div className="mt-4 space-y-4 px-1">
               <NodeDetailBody node={node} onOpenOpportunity={onOpenOpportunity} />
               <div className="flex flex-col gap-2 border-t border-border pt-4">
-                <Button variant="outline" onClick={() => onFocus(node.id)}>
+                <Button variant="outline" onClick={() => onFocus(node.id as string)}>
                   <ArrowRight className="h-3.5 w-3.5" />
                   Explore intelligence
                 </Button>
@@ -317,7 +444,7 @@ function NodeDetailBody({
   node,
   onOpenOpportunity,
 }: {
-  node: GraphNode;
+  node: FGNode;
   onOpenOpportunity: (id: string) => void;
 }) {
   if (node.type === "capability") {
@@ -372,8 +499,30 @@ function NodeDetailBody({
       </div>
     );
   }
+  if (node.type === "person") {
+    const d = getPersonDetail(node.label);
+    return (
+      <div>
+        <StatRow label="Role" value={d.title} />
+        <StatRow label="Practice" value={d.practiceLabel} />
+        <StatRow label="Opportunities owned" value={d.opportunities.length} />
+        <div className="space-y-2 pt-2">
+          {d.opportunities.map((o) => (
+            <button
+              key={o.id}
+              onClick={() => onOpenOpportunity(o.id)}
+              className="flex w-full items-center justify-between rounded-md border border-border p-2.5 text-left text-xs hover:bg-accent cursor-pointer"
+            >
+              <span className="font-medium text-foreground">{o.name}</span>
+              <PriorityBadge priority={o.priority} />
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+  }
   if (node.type === "opportunity") {
-    const o = getOpportunity(node.id);
+    const o = getOpportunity(node.id as string);
     if (!o) return null;
     return (
       <div>

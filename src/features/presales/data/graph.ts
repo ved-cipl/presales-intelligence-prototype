@@ -2,7 +2,14 @@ import { OPPORTUNITIES } from "./opportunities";
 import type { Opportunity } from "./types";
 
 export type GraphNodeType =
-  "opportunity" | "client" | "industry" | "capability" | "technology" | "caseStudy" | "practice";
+  | "opportunity"
+  | "client"
+  | "industry"
+  | "capability"
+  | "technology"
+  | "caseStudy"
+  | "practice"
+  | "person";
 
 export interface GraphNode {
   id: string;
@@ -52,12 +59,28 @@ export const CASE_STUDIES: CaseStudySeed[] = [
     outcome: "3 multi-site S/4HANA rollouts delivered.",
   },
   {
+    id: "cs-manufacturing-iot",
+    label: "Factory Automation Rollout",
+    year: "2023",
+    capabilities: ["RPA", "Cloud Engineering"],
+    industry: "Manufacturing",
+    outcome: "60% reduction in manual production reporting.",
+  },
+  {
     id: "cs-fraud-analytics",
     label: "Real-Time Fraud Analytics",
     year: "2025",
     capabilities: ["AI/ML", "Cybersecurity"],
     industry: "BFSI",
     outcome: "38% reduction in fraud losses in year one.",
+  },
+  {
+    id: "cs-bfsi-lending",
+    label: "Digital Lending Accelerator",
+    year: "2024",
+    capabilities: ["AI/ML", "Data Engineering"],
+    industry: "BFSI",
+    outcome: "Loan decisioning time cut from 5 days to 4 hours.",
   },
   {
     id: "cs-retail-soc",
@@ -92,6 +115,21 @@ export const PRACTICES: { id: string; label: string; capabilities: string[]; hea
     { id: "pr-rpa", label: "Automation Practice", capabilities: ["RPA"], headcount: 22 },
   ];
 
+// Owners already appear on opportunities — surfacing them as graph nodes ties named
+// expertise into the same connected model instead of inventing a separate people list.
+export const OWNER_PRACTICE: Record<string, { practiceId: string; title: string }> = {
+  "Ananya Rao": { practiceId: "pr-ai", title: "AI Practice Lead" },
+  "Vikram Sethi": { practiceId: "pr-cloud", title: "Cloud Practice Lead" },
+  "Karan Mehta": { practiceId: "pr-sap", title: "SAP Practice Lead" },
+  "Neha Kapoor": { practiceId: "pr-rpa", title: "Automation Practice Lead" },
+  "Priya Nair": { practiceId: "pr-data", title: "Data Practice Lead" },
+  "Rohan Iyer": { practiceId: "pr-cyber", title: "Cybersecurity Practice Lead" },
+};
+
+export function personNodeId(owner: string) {
+  return `person-${slug(owner)}`;
+}
+
 export const CAPABILITY_TREND: Record<string, string> = {
   "AI/ML": "+42%",
   "AI Governance": "+34%",
@@ -102,11 +140,12 @@ export const CAPABILITY_TREND: Record<string, string> = {
   RPA: "+9%",
 };
 
-const slug = (s: string) =>
-  s
+function slug(s: string) {
+  return s
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/(^-|-$)/g, "");
+}
 
 export function clientNodeId(client: string) {
   return `client-${slug(client)}`;
@@ -128,9 +167,12 @@ export function buildGraph(): { nodes: GraphNode[]; edges: GraphEdge[] } {
     if (!nodes.has(n.id)) nodes.set(n.id, n);
   };
   const addEdge = (a: string, b: string, kind: GraphEdge["kind"] = "primary") => {
+    if (a === b) return;
     if (edges.some((e) => (e.a === a && e.b === b) || (e.a === b && e.b === a))) return;
     edges.push({ a, b, kind });
   };
+
+  const capTechPairCounts = new Map<string, number>();
 
   for (const opp of OPPORTUNITIES) {
     addNode({ id: opp.id, type: "opportunity", label: opp.name, sub: opp.client });
@@ -142,6 +184,12 @@ export function buildGraph(): { nodes: GraphNode[]; edges: GraphEdge[] } {
     addNode({ id: iid, type: "industry", label: opp.industry });
     addEdge(opp.id, iid);
     addEdge(cid, iid);
+
+    const pid = personNodeId(opp.owner);
+    const ownerMeta = OWNER_PRACTICE[opp.owner];
+    addNode({ id: pid, type: "person", label: opp.owner, sub: ownerMeta?.title ?? "Presales" });
+    addEdge(opp.id, pid);
+    if (ownerMeta) addEdge(pid, ownerMeta.practiceId);
 
     for (const cap of opp.capabilities) {
       const capId = capabilityNodeId(cap);
@@ -155,9 +203,23 @@ export function buildGraph(): { nodes: GraphNode[]; edges: GraphEdge[] } {
       addEdge(opp.id, techId);
       addEdge(cid, techId);
     }
+    for (const cap of opp.capabilities) {
+      for (const tech of opp.technologies) {
+        const key = `${cap}|||${tech}`;
+        capTechPairCounts.set(key, (capTechPairCounts.get(key) ?? 0) + 1);
+      }
+    }
     for (const simId of opp.similarOpportunityIds) {
       addEdge(opp.id, simId, "similar");
     }
+  }
+
+  // Direct capability <-> technology links where the pairing recurs across opportunities —
+  // surfaces which tech stacks a capability is actually delivered with, not just co-membership.
+  for (const [key, count] of capTechPairCounts) {
+    if (count < 2) continue;
+    const [cap, tech] = key.split("|||");
+    addEdge(capabilityNodeId(cap), technologyNodeId(tech));
   }
 
   for (const cs of CASE_STUDIES) {
@@ -217,4 +279,16 @@ export function getTechnologyDetail(techLabel: string) {
   const relatedOpps = OPPORTUNITIES.filter((o) => o.technologies.includes(techLabel));
   const industries = Array.from(new Set(relatedOpps.map((o) => o.industry)));
   return { opportunities: relatedOpps, industries };
+}
+
+export function getPersonDetail(ownerLabel: string) {
+  const relatedOpps = OPPORTUNITIES.filter((o) => o.owner === ownerLabel);
+  const meta = OWNER_PRACTICE[ownerLabel];
+  const practice = PRACTICES.find((p) => p.id === meta?.practiceId);
+  return {
+    opportunities: relatedOpps,
+    title: meta?.title ?? "Presales",
+    practiceLabel: practice?.label ?? "—",
+    totalValueLabel: relatedOpps.map((o) => o.estimatedValueLabel).join(" · "),
+  };
 }
