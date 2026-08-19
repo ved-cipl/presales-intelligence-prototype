@@ -1,0 +1,10 @@
+node_modules
+dist
+.output
+.wrangler
+*.local
+.DS_Store
+npm-debug.log*
+
+# TanStack Router codegen — regenerated on every dev/build
+src/routeTree.gen.ts
