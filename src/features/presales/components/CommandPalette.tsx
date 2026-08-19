@@ -8,6 +8,7 @@ import {
   LayoutDashboard,
   LineChart,
   ScanSearch,
+  Settings2,
   Share2,
   TrendingUp,
 } from "lucide-react";
@@ -69,6 +70,9 @@ export function CommandPalette({
           </CommandItem>
           <CommandItem onSelect={() => go("/knowledge-graph")}>
             <Share2 /> Knowledge Graph
+          </CommandItem>
+          <CommandItem onSelect={() => go("/knowledge/graph-config")}>
+            <Settings2 /> Knowledge Graph Configuration
           </CommandItem>
           <CommandItem onSelect={() => go("/intelligence")}>
             <TrendingUp /> Intelligence
