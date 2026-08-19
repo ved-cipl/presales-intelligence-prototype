@@ -1,8 +1,11 @@
 /* ── Presales Intelligence theme ──────────────────────────────────────────
-   Scoped under `.presales-app` so it never touches RackOn's global graphite/
-   amber console theme. Premium enterprise SaaS: near-white surfaces, deep
-   navy primary, restrained blue accent, and a small signal-color vocabulary
-   (green = positive, amber = uncertain, red = risk, gray = unknown) used
+   Global (:root) — this app has no other theme to coexist with. Must stay
+   global rather than scoped to a wrapper class: Radix portals (Dialog,
+   Sheet, Popover, Select, Command) render straight to document.body,
+   outside any wrapper div, so they only pick up variables defined at
+   :root. Premium enterprise SaaS: near-white surfaces, deep navy primary,
+   restrained blue accent, and a small signal-color vocabulary (green =
+   positive, amber = uncertain, red = risk, gray = unknown) used
    consistently for AI confidence and qualification states. */
 
 @theme inline {
@@ -13,7 +16,7 @@
   --color-signal-info: var(--signal-info);
 }
 
-.presales-app {
+:root {
   --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, monospace;
   font-family: var(--font-sans);
@@ -69,7 +72,7 @@
   font-feature-settings: "tnum" 1;
 }
 
-.presales-app ::selection {
+::selection {
   background: color-mix(in oklch, var(--signal-info) 25%, transparent);
 }
 

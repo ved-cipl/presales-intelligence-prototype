@@ -42,7 +42,7 @@ export function PresalesLayout({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <div className="presales-app flex h-screen w-full overflow-hidden bg-background text-foreground">
+    <div className="flex h-screen w-full overflow-hidden bg-background text-foreground">
       <aside className="flex w-60 shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground">
         <div className="flex items-center gap-2.5 px-5 py-5">
           <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">

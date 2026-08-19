@@ -9,9 +9,11 @@
  *
  * The @theme inline block maps CSS custom properties to Tailwind utility
  * classes (e.g. --color-primary -> bg-primary, text-primary). The actual
- * values live in ./styles/presales-theme.css, scoped under `.presales-app`
- * (the app's single root wrapper) — this file only registers which
- * variables Tailwind should generate utilities for.
+ * values live in ./styles/presales-theme.css, defined globally on :root
+ * (not scoped to a wrapper class — Radix portals such as Dialog, Sheet,
+ * Popover, Select and Command render straight to document.body, so the
+ * variables need to be visible there too) — this file only registers
+ * which variables Tailwind should generate utilities for.
  */
 @theme inline {
   --radius-sm: calc(var(--radius) - 4px);
@@ -56,10 +58,6 @@
   --color-sidebar-ring: var(--sidebar-ring);
 }
 
-:root {
-  --radius: 0.625rem;
-}
-
 @layer base {
   * {
     border-color: var(--color-border);
@@ -72,7 +70,7 @@
   }
 
   body {
-    background-color: oklch(0.99 0.003 250);
+    background-color: var(--color-background);
     color: var(--color-foreground);
     font-feature-settings: "tnum" 1;
   }
