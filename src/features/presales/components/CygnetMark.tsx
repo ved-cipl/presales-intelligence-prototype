@@ -1,0 +1,11 @@
+export function CygnetMark({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 40 40" className={className} aria-hidden="true">
+      <rect width="40" height="40" rx="9" fill="#12213B" />
+      <rect x="26" y="-4" width="10" height="18" rx="2.5" fill="#F0A939" />
+      <circle cx="18" cy="21" r="9.5" fill="none" stroke="#FFFFFF" strokeWidth="7" />
+      <polygon points="18,21 32.1,15.9 27.6,32.5" fill="#12213B" />
+      <circle cx="27.2" cy="23.5" r="2.8" fill="#FFFFFF" />
+    </svg>
+  );
+}

@@ -1,11 +1,12 @@
 import * as React from "react";
 import { Link, useRouterState } from "@tanstack/react-router";
-import { Bell, LayoutGrid, Search } from "lucide-react";
+import { Bell, Search } from "lucide-react";
 
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import { CommandPalette } from "@/features/presales/components/CommandPalette";
+import { CygnetMark } from "@/features/presales/components/CygnetMark";
 import { PRESALES_NAV } from "@/features/presales/components/nav";
 
 const NOTIFICATIONS = [
@@ -45,9 +46,7 @@ export function PresalesLayout({ children }: { children: React.ReactNode }) {
     <div className="flex h-screen w-full overflow-hidden bg-background text-foreground">
       <aside className="flex w-60 shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground">
         <div className="flex items-center gap-2.5 px-5 py-5">
-          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
-            <LayoutGrid className="h-4.5 w-4.5" />
-          </span>
+          <CygnetMark className="h-8 w-8 shrink-0 rounded-lg" />
           <div>
             <p className="text-sm font-semibold leading-tight text-white">Presales Intelligence</p>
             <p className="text-[11px] leading-tight text-sidebar-foreground/60">CIPL Internal</p>
