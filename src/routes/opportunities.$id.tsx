@@ -1,6 +1,6 @@
 import * as React from "react";
 import { createFileRoute, Link, notFound, useNavigate } from "@tanstack/react-router";
-import { Download, Share2 as ShareIcon, UserCheck } from "lucide-react";
+import { Download, GitBranch, Share2 as ShareIcon, UserCheck } from "lucide-react";
 import { z } from "zod";
 
 import { Button } from "@/components/ui/button";
@@ -8,8 +8,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AIRecommendationBanner } from "@/features/presales/components/AIRecommendationBanner";
 import { ConfidenceBadge, DimensionLevelBadge } from "@/features/presales/components/badges";
 import { DecisionMatrix } from "@/features/presales/components/DecisionMatrix";
+import { DecisionTracePanel } from "@/features/presales/components/decision-designer/DecisionTracePanel";
 import { EvidenceCard } from "@/features/presales/components/EvidenceCard";
 import { GraphCanvas } from "@/features/presales/components/GraphCanvas";
+import { KnowledgeUsedCard } from "@/features/presales/components/knowledge/KnowledgeUsedCard";
 import { OpportunityMiniCard } from "@/features/presales/components/OpportunityMiniCard";
 import { PageContainer } from "@/features/presales/components/PageHeader";
 import { QualificationScorecard } from "@/features/presales/components/QualificationScorecard";
@@ -60,6 +62,7 @@ function OpportunityDetailPage() {
   const navigate = useNavigate();
   const { getOpportunity: getLiveOpportunity } = usePresalesData();
   const opportunity = getLiveOpportunity(id) ?? getOpportunity(id);
+  const [traceOpen, setTraceOpen] = React.useState(false);
 
   if (!opportunity) {
     return (
@@ -231,14 +234,22 @@ function OpportunityDetailPage() {
               })}
             </div>
           </div>
+
+          <KnowledgeUsedCard />
         </TabsContent>
 
         <TabsContent value="qualification" className="space-y-5 pt-4">
-          <div>
-            <h2 className="text-base font-semibold text-foreground">AI Qualification Assessment</h2>
-            <p className="mt-0.5 text-sm text-muted-foreground">
-              Assessment against organizational qualification standards
-            </p>
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 className="text-base font-semibold text-foreground">AI Qualification Assessment</h2>
+              <p className="mt-0.5 text-sm text-muted-foreground">
+                Assessment against organizational qualification standards
+              </p>
+            </div>
+            <Button variant="outline" size="sm" onClick={() => setTraceOpen(true)}>
+              <GitBranch className="h-3.5 w-3.5" />
+              Decision Trace
+            </Button>
           </div>
 
           <QualificationScorecard opportunity={opportunity} />
@@ -375,6 +386,8 @@ function OpportunityDetailPage() {
           )}
         </TabsContent>
       </Tabs>
+
+      <DecisionTracePanel open={traceOpen} onOpenChange={setTraceOpen} opportunityId={opportunity.id} />
     </PageContainer>
   );
 }

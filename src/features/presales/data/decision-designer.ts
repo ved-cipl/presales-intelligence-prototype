@@ -575,6 +575,30 @@ export function getPolicy(id: string) {
   return DECISION_POLICIES.find((p) => p.id === id);
 }
 
+export function domainUsageForPolicy(policyId: string): { domainId: string; usedByNodes: string[] }[] {
+  const policy = getPolicy(policyId);
+  if (!policy) return [];
+  const map = new Map<string, Set<string>>();
+  for (const n of policy.nodes) {
+    for (const d of n.knowledgeDomainIds) {
+      if (!map.has(d)) map.set(d, new Set());
+      map.get(d)!.add(n.name);
+    }
+  }
+  return Array.from(map.entries()).map(([domainId, nodes]) => ({
+    domainId,
+    usedByNodes: Array.from(nodes),
+  }));
+}
+
+export function nodesForPolicyPath(policyId: string, path: string[]): DesignerNode[] {
+  const policy = getPolicy(policyId);
+  if (!policy) return [];
+  return path
+    .map((id) => policy.nodes.find((n) => n.id === id))
+    .filter((n): n is DesignerNode => !!n);
+}
+
 export interface NodeLibraryItem {
   type: DecisionNodeType;
   label: string;
