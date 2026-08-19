@@ -1,6 +1,6 @@
 import * as React from "react";
 import { Link, useRouterState } from "@tanstack/react-router";
-import { Bell, Search } from "lucide-react";
+import { Bell, ChevronDown, Search } from "lucide-react";
 
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -30,6 +30,18 @@ const NOTIFICATIONS = [
 export function PresalesLayout({ children }: { children: React.ReactNode }) {
   const [paletteOpen, setPaletteOpen] = React.useState(false);
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const [openGroups, setOpenGroups] = React.useState<Set<string>>(
+    () => new Set(["decision-intelligence", "knowledge"]),
+  );
+
+  function toggleGroup(id: string) {
+    setOpenGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
 
   React.useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
@@ -54,10 +66,53 @@ export function PresalesLayout({ children }: { children: React.ReactNode }) {
         </div>
 
         <nav className="flex-1 space-y-0.5 overflow-y-auto px-3">
-          {PRESALES_NAV.map((item) => {
-            const active =
-              pathname === item.to ||
-              (item.to !== "/dashboard" && pathname.startsWith(item.to));
+          {PRESALES_NAV.map((item, i) => {
+            if (item.kind === "divider") {
+              return <div key={`div-${i}`} className="my-2 border-t border-sidebar-border" />;
+            }
+            if (item.kind === "group") {
+              const isOpen = openGroups.has(item.id) || item.items.some((sub) => pathname.startsWith(sub.to));
+              const GroupIcon = item.icon;
+              return (
+                <div key={item.id}>
+                  <button
+                    type="button"
+                    onClick={() => toggleGroup(item.id)}
+                    className="flex w-full items-center justify-between gap-2 rounded-md px-3 py-2 text-sm font-medium text-sidebar-foreground/75 transition-colors hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground cursor-pointer"
+                  >
+                    <span className="flex items-center gap-2.5">
+                      <GroupIcon className="h-4 w-4 shrink-0" />
+                      {item.label}
+                    </span>
+                    <ChevronDown className={cn("h-3.5 w-3.5 shrink-0 transition-transform", isOpen && "rotate-180")} />
+                  </button>
+                  {isOpen ? (
+                    <div className="mt-0.5 space-y-0.5 border-l border-sidebar-border pl-3.5">
+                      {item.items.map((sub) => {
+                        const active = pathname === sub.to || pathname.startsWith(`${sub.to}/`);
+                        const SubIcon = sub.icon;
+                        return (
+                          <Link
+                            key={sub.to}
+                            to={sub.to}
+                            className={cn(
+                              "flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-[13px] font-medium transition-colors",
+                              active
+                                ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                                : "text-sidebar-foreground/65 hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground",
+                            )}
+                          >
+                            <SubIcon className="h-3.5 w-3.5 shrink-0" />
+                            {sub.label}
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  ) : null}
+                </div>
+              );
+            }
+            const active = pathname === item.to || (item.to !== "/dashboard" && pathname.startsWith(item.to));
             const Icon = item.icon;
             return (
               <Link

@@ -1,6 +1,16 @@
 import * as React from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { Briefcase, LayoutDashboard, ScanSearch, Share2, TrendingUp } from "lucide-react";
+import {
+  Blocks,
+  Briefcase,
+  Database,
+  GitBranch,
+  LayoutDashboard,
+  LineChart,
+  ScanSearch,
+  Share2,
+  TrendingUp,
+} from "lucide-react";
 
 import {
   CommandDialog,
@@ -41,6 +51,21 @@ export function CommandPalette({
           </CommandItem>
           <CommandItem onSelect={() => go("/qualification")}>
             <ScanSearch /> Qualification Standards
+          </CommandItem>
+          <CommandItem onSelect={() => go("/decision-designer")}>
+            <GitBranch /> Decision Designer
+          </CommandItem>
+          <CommandItem onSelect={() => go("/decision-policies")}>
+            <Blocks /> Decision Policies
+          </CommandItem>
+          <CommandItem onSelect={() => go("/decision-analytics")}>
+            <LineChart /> Decision Analytics
+          </CommandItem>
+          <CommandItem onSelect={() => go("/knowledge/domains")}>
+            <Database /> Knowledge Domains
+          </CommandItem>
+          <CommandItem onSelect={() => go("/knowledge/sources")}>
+            <Database /> Knowledge Sources
           </CommandItem>
           <CommandItem onSelect={() => go("/knowledge-graph")}>
             <Share2 /> Knowledge Graph
