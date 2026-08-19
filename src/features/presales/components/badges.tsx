@@ -89,7 +89,8 @@ type ProvenanceKind =
   | "human-confirmed"
   | "unknown"
   | "low-confidence"
-  | "high-confidence";
+  | "high-confidence"
+  | "conflicting";
 
 const provenanceMeta: Record<
   ProvenanceKind,
@@ -101,6 +102,7 @@ const provenanceMeta: Record<
   unknown: { label: "Unknown", icon: CircleDashed, tone: "unknown" },
   "low-confidence": { label: "Low confidence", icon: AlertTriangle, tone: "warning" },
   "high-confidence": { label: "High confidence", icon: TrendingUp, tone: "positive" },
+  conflicting: { label: "Conflicting evidence", icon: AlertTriangle, tone: "risk" },
 };
 
 export function ProvenanceBadge({ kind, className }: { kind: ProvenanceKind; className?: string }) {

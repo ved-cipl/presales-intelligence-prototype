@@ -292,3 +292,103 @@ export function getPersonDetail(ownerLabel: string) {
     totalValueLabel: relatedOpps.map((o) => o.estimatedValueLabel).join(" · "),
   };
 }
+
+// --- Knowledge Graph evidence & trust model -------------------------------
+// The graph deliberately does not present every node as equally certain: some
+// facts are source-verified, some are AI-inferred from patterns, some rest on
+// thin evidence, and a small number genuinely conflict across sources. This
+// mirrors real organizational knowledge rather than implying false precision.
+
+export type VerificationStatus = "verified" | "ai-inferred" | "low-confidence" | "conflicting";
+
+function hashId(id: string) {
+  let h = 0;
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
+  return h;
+}
+
+const VERIFIED_BIAS: Record<GraphNodeType, number> = {
+  opportunity: 0.72,
+  client: 0.8,
+  industry: 0.45,
+  capability: 0.7,
+  technology: 0.58,
+  caseStudy: 0.88,
+  practice: 1,
+  person: 0.85,
+};
+
+// A handful of nodes are deliberately marked conflicting to demonstrate that the
+// system can say "we don't know" rather than presenting a single false answer.
+const CONFLICTING_NODE_IDS = new Set<string>([
+  industryNodeId("BFSI"),
+  technologyNodeId("Azure"),
+  clientNodeId("Sterling Capital Bank"),
+]);
+
+const EVIDENCE_SOURCES_BY_TYPE: Record<GraphNodeType, string[]> = {
+  opportunity: ["CRM", "RFP document", "Presales notes"],
+  client: ["CRM — Accounts", "Account Notes (Manual Knowledge)"],
+  industry: ["CRM", "Analyst Report Feed (Market Intelligence)"],
+  capability: ["Practice Charter (Manual Knowledge)", "Certification Registry"],
+  technology: ["Historical Project Repository", "Proposal Archive"],
+  caseStudy: ["Case Study Database — Human Verified"],
+  practice: ["Practice Charter (Manual Knowledge)"],
+  person: ["CRM — Owner field", "Staffing System API"],
+};
+
+export interface NodeEvidence {
+  status: VerificationStatus;
+  confidence: number;
+  sources: string[];
+  activity: { label: string; time: string }[];
+}
+
+export function getNodeEvidence(node: GraphNode): NodeEvidence {
+  if (node.type === "practice") {
+    return {
+      status: "verified",
+      confidence: 99,
+      sources: EVIDENCE_SOURCES_BY_TYPE.practice,
+      activity: [{ label: "Confirmed against practice charter", time: "Reviewed monthly" }],
+    };
+  }
+
+  const h = hashId(node.id);
+  const roll = (h % 1000) / 1000;
+  const sources = EVIDENCE_SOURCES_BY_TYPE[node.type];
+
+  let status: VerificationStatus;
+  if (CONFLICTING_NODE_IDS.has(node.id)) {
+    status = "conflicting";
+  } else if (roll < VERIFIED_BIAS[node.type] - 0.15) {
+    status = "verified";
+  } else if (roll < VERIFIED_BIAS[node.type] + 0.12) {
+    status = "ai-inferred";
+  } else {
+    status = "low-confidence";
+  }
+
+  const confidence =
+    status === "verified"
+      ? 88 + (h % 11)
+      : status === "ai-inferred"
+        ? 68 + (h % 16)
+        : status === "conflicting"
+          ? 40 + (h % 16)
+          : 32 + (h % 18);
+
+  const activity: { label: string; time: string }[] =
+    status === "conflicting"
+      ? [
+          { label: "AI reconciliation flagged conflicting source values", time: `${2 + (h % 5)} days ago` },
+          { label: "Awaiting human review", time: "Open" },
+        ]
+      : status === "ai-inferred"
+        ? [{ label: "Inferred from co-occurrence across opportunities", time: `${1 + (h % 4)} weeks ago` }]
+        : status === "low-confidence"
+          ? [{ label: "Single-source mention, not yet corroborated", time: `${3 + (h % 6)} weeks ago` }]
+          : [{ label: "Re-verified against source system", time: `${1 + (h % 9)} days ago` }];
+
+  return { status, confidence: Math.min(99, confidence), sources, activity };
+}

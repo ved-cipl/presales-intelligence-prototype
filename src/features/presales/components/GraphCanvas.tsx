@@ -13,14 +13,16 @@ import {
   getCapabilityDetail,
   getClientDetail,
   getIndustryDetail,
+  getNodeEvidence,
   getPersonDetail,
   getTechnologyDetail,
   PRACTICES,
   type GraphNode,
   type GraphNodeType,
+  type VerificationStatus,
 } from "@/features/presales/data/graph";
 import { getOpportunity } from "@/features/presales/data/opportunities";
-import { PriorityBadge } from "@/features/presales/components/badges";
+import { PriorityBadge, ProvenanceBadge } from "@/features/presales/components/badges";
 
 const TYPE_ORDER: GraphNodeType[] = [
   "opportunity",
@@ -46,6 +48,21 @@ const TYPE_META: Record<
   practice: { fill: "#0891b2", label: "Practice", shape: "square" },
   person: { fill: "#db2777", label: "Person", shape: "circle" },
 };
+
+type ViewMode = "standard" | "evidence" | "confidence";
+
+const STATUS_COLOR: Record<VerificationStatus, string> = {
+  verified: "#16a34a",
+  "ai-inferred": "#0ea5e9",
+  "low-confidence": "#94a3b8",
+  conflicting: "#dc2626",
+};
+
+function confidenceColor(confidence: number) {
+  if (confidence >= 80) return "#16a34a";
+  if (confidence >= 55) return "#d97706";
+  return "#dc2626";
+}
 
 type FGNode = NodeObject<GraphNode>;
 interface FGLink {
@@ -135,6 +152,7 @@ export function GraphCanvas({
   }, []);
 
   const [activeTypes, setActiveTypes] = React.useState<Set<GraphNodeType>>(() => new Set(TYPE_ORDER));
+  const [viewMode, setViewMode] = React.useState<ViewMode>("standard");
   const [query, setQuery] = React.useState("");
   const [selected, setSelected] = React.useState<FGNode | null>(null);
   const [hovered, setHovered] = React.useState<FGNode | null>(null);
@@ -250,10 +268,46 @@ export function GraphCanvas({
           })}
         </div>
 
+        <div className="flex items-center gap-0.5 rounded-md border border-border bg-muted/40 p-0.5">
+          {(["standard", "evidence", "confidence"] as ViewMode[]).map((m) => (
+            <button
+              key={m}
+              onClick={() => setViewMode(m)}
+              className={cn(
+                "rounded px-2 py-1 text-[11px] font-medium capitalize transition-colors cursor-pointer",
+                viewMode === m ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              {m}
+            </button>
+          ))}
+        </div>
+
         <span className="ml-auto text-[11px] text-muted-foreground">
           {filteredData.nodes.length} nodes · {filteredData.links.length} connections
         </span>
       </div>
+
+      {viewMode === "evidence" ? (
+        <div className="flex flex-wrap items-center gap-3 border-b border-border bg-muted/20 px-3 py-1.5 text-[10px] text-muted-foreground">
+          <span className="flex items-center gap-1.5">
+            <span className="inline-block h-2.5 w-2.5 rounded-full border-2 border-signal-positive" /> Verified
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span
+              className="inline-block h-2.5 w-2.5 rounded-full border-2 border-dashed"
+              style={{ borderColor: STATUS_COLOR["ai-inferred"] }}
+            />
+            AI inferred
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="inline-block h-2.5 w-2.5 rounded-full border-2 border-muted-foreground opacity-40" /> Low confidence (faded)
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="inline-block h-2.5 w-2.5 rounded-full bg-signal-risk" /> ⚠ Conflicting
+          </span>
+        </div>
+      ) : null}
 
       <div ref={containerRef} className="relative" style={{ height }}>
         <ForceGraph2D<GraphNode, FGLink>
@@ -270,14 +324,36 @@ export function GraphCanvas({
             const isSelected = selected?.id === node.id;
             const isHighlighted = !highlightIds || highlightIds.has(node.id as string);
             const meta = TYPE_META[node.type];
+            const evidence = viewMode !== "standard" ? getNodeEvidence(node) : null;
 
-            ctx.globalAlpha = isHighlighted ? 1 : 0.15;
+            let baseAlpha = isHighlighted ? 1 : 0.15;
+            if (evidence?.status === "low-confidence" && isHighlighted) baseAlpha = 0.45;
+            ctx.globalAlpha = baseAlpha;
             drawShape(ctx, meta.shape, node.x ?? 0, node.y ?? 0, r);
-            ctx.fillStyle = meta.fill;
+            ctx.fillStyle = viewMode === "confidence" && evidence ? confidenceColor(evidence.confidence) : meta.fill;
             ctx.fill();
+
+            if (viewMode === "evidence" && evidence) {
+              ctx.lineWidth = 1.6 / globalScale;
+              ctx.strokeStyle = STATUS_COLOR[evidence.status];
+              ctx.setLineDash(evidence.status === "ai-inferred" ? [3 / globalScale, 2 / globalScale] : []);
+              drawShape(ctx, meta.shape, node.x ?? 0, node.y ?? 0, r + 1.5 / globalScale);
+              ctx.stroke();
+              ctx.setLineDash([]);
+              if (evidence.status === "conflicting") {
+                ctx.globalAlpha = 1;
+                ctx.font = `700 ${10 / globalScale}px system-ui, sans-serif`;
+                ctx.textAlign = "center";
+                ctx.fillStyle = "#dc2626";
+                ctx.fillText("⚠", (node.x ?? 0) + r + 4 / globalScale, (node.y ?? 0) - r - 2 / globalScale);
+              }
+            }
+
             if (isSelected) {
+              ctx.globalAlpha = 1;
               ctx.lineWidth = 2 / globalScale;
               ctx.strokeStyle = "#111827";
+              drawShape(ctx, meta.shape, node.x ?? 0, node.y ?? 0, r);
               ctx.stroke();
             }
 
@@ -417,6 +493,7 @@ function NodeDetailSheet({
             </SheetHeader>
             <div className="mt-4 space-y-4 px-1">
               <NodeDetailBody node={node} onOpenOpportunity={onOpenOpportunity} />
+              <EvidencePanel node={node} />
               <div className="flex flex-col gap-2 border-t border-border pt-4">
                 <Button variant="outline" onClick={() => onFocus(node.id as string)}>
                   <ArrowRight className="h-3.5 w-3.5" />
@@ -428,6 +505,54 @@ function NodeDetailSheet({
         ) : null}
       </SheetContent>
     </Sheet>
+  );
+}
+
+const EVIDENCE_PROVENANCE_KIND: Record<VerificationStatus, "source-verified" | "ai-inferred" | "low-confidence" | "conflicting"> = {
+  verified: "source-verified",
+  "ai-inferred": "ai-inferred",
+  "low-confidence": "low-confidence",
+  conflicting: "conflicting",
+};
+
+function EvidencePanel({ node }: { node: FGNode }) {
+  const evidence = getNodeEvidence(node);
+  return (
+    <div className="rounded-lg border border-border bg-muted/20 p-3">
+      <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+        Evidence & Verification
+      </p>
+      <div className="mt-2 flex items-center justify-between">
+        <ProvenanceBadge kind={EVIDENCE_PROVENANCE_KIND[evidence.status]} />
+        <span className="text-xs font-semibold tabular-nums text-foreground">{evidence.confidence}% confidence</span>
+      </div>
+      {evidence.status === "conflicting" ? (
+        <p className="mt-2 text-[11px] leading-relaxed text-signal-risk">
+          Sources disagree on this fact. Treat as unverified until a human reviews it.
+        </p>
+      ) : null}
+      <div className="mt-2.5">
+        <p className="text-[10px] font-medium text-muted-foreground">Sources</p>
+        <ul className="mt-1 space-y-0.5">
+          {evidence.sources.map((s) => (
+            <li key={s} className="text-xs text-foreground">
+              {s}
+            </li>
+          ))}
+        </ul>
+      </div>
+      <div className="mt-2.5">
+        <p className="text-[10px] font-medium text-muted-foreground">Recent activity</p>
+        <ul className="mt-1 space-y-1">
+          {evidence.activity.map((a) => (
+            <li key={a.label} className="flex items-center justify-between gap-2 text-xs">
+              <span className="text-foreground">{a.label}</span>
+              <span className="shrink-0 text-[10px] text-muted-foreground">{a.time}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
   );
 }
 
