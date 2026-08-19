@@ -16,7 +16,9 @@ This is a standalone client-side React app. All data is mock/local (`src/feature
 - **Opportunity Intelligence** (`/opportunities/:id`) — qualification scorecard, evidence,
   similar opportunities, knowledge graph, activity timeline, decision history
 - **Evidence Explorer** (`/opportunities/:id/evidence`)
-- **Knowledge Graph** (`/knowledge-graph`) — interactive pan/zoom graph with entity side panels
+- **Knowledge Graph** (`/knowledge-graph`) — force-directed graph (opportunities, clients,
+  industries, capabilities, technologies, case studies, practices, people) with search-to-focus,
+  type filters, hover/click highlighting and entity side panels
 - **Intelligence** (`/intelligence`) — trends, market map, AI workforce, architecture
 - **Qualification Standards** (`/qualification`) — editable organizational scoring framework
 - **Solutions / Knowledge / Settings** — Coming Soon placeholders
