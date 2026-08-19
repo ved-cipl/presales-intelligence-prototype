@@ -5,6 +5,7 @@ import {
   Briefcase,
   Database,
   GitBranch,
+  Layers,
   LayoutDashboard,
   LineChart,
   ScanSearch,
@@ -76,6 +77,9 @@ export function CommandPalette({
           </CommandItem>
           <CommandItem onSelect={() => go("/intelligence")}>
             <TrendingUp /> Intelligence
+          </CommandItem>
+          <CommandItem onSelect={() => go("/platform")}>
+            <Layers /> Platform Architecture
           </CommandItem>
         </CommandGroup>
         <CommandSeparator />

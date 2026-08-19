@@ -5,6 +5,7 @@ import {
   Briefcase,
   Database,
   GitBranch,
+  Layers,
   LayoutDashboard,
   LineChart,
   ScanSearch,
@@ -68,5 +69,6 @@ export const PRESALES_NAV: NavEntry[] = [
   { kind: "divider" },
   { kind: "link", label: "Intelligence", to: "/intelligence", icon: TrendingUp },
   { kind: "link", label: "Solutions", to: "/solutions", icon: Blocks, comingSoon: true },
+  { kind: "link", label: "Platform", to: "/platform", icon: Layers },
   { kind: "link", label: "Settings", to: "/settings", icon: Settings },
 ];
