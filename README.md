@@ -31,28 +31,25 @@ npm run dev
 Other scripts: `npm run build` (production build to `dist/`), `npm run preview` (serve the build
 locally), `npm run typecheck`.
 
-## Deploying to Cloudflare Pages
+## Deploying to Cloudflare
 
-This is a static single-page app — no server runtime is required.
+This is a static single-page app — deployed as a Cloudflare **Worker with static assets** (no
+server runtime code required; `wrangler.toml` has no `main` entry, so it's purely an assets
+deployment). `not_found_handling = "single-page-application"` in `wrangler.toml` makes client-side
+routes (e.g. `/opportunities/opp-nia`) resolve correctly on refresh/deep-link instead of 404ing.
 
 ### Option A — Git integration (recommended)
 
-1. In the Cloudflare dashboard: **Workers & Pages → Create → Pages → Connect to Git**, and select
-   this repository.
+1. In the Cloudflare dashboard: **Workers & Pages → Create**, then connect this repository.
 2. Build settings:
    - **Build command:** `npm run build`
-   - **Build output directory:** `dist`
+   - **Deploy command:** `npx wrangler deploy`
 3. Deploy. Every push to the connected branch redeploys automatically.
-
-`public/_redirects` (`/* /index.html 200`) is included so client-side routes (e.g.
-`/opportunities/opp-nia`) resolve correctly on refresh/deep-link instead of 404ing.
 
 ### Option B — Wrangler CLI
 
 ```sh
-npm install -g wrangler   # or use npx
+npm install
 npm run build
-npx wrangler pages deploy dist --project-name presales-intelligence-prototype
+npx wrangler deploy
 ```
-
-`wrangler.toml` at the repo root already points at `dist` as the Pages build output directory.
